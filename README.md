@@ -6,7 +6,7 @@ Please note that the model provided in this repository doesn't represent the per
 # Installation
 Install with pip. The installation is confirmed on Python 3.10.11
 ```python
-pip install git+https://github.com/Wataru-Nakata/miipher
+pip install 
 ```
 
 # Pretrained model
@@ -32,4 +32,3 @@ To use pretrained model, please refere to `examples/demo.py`
 Code in this repo: MIT License
 
 Weights on huggingface: CC-BY-NC-2.0 license
-
