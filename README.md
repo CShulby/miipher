@@ -6,7 +6,7 @@ Please note that the model provided in this repository doesn't represent the per
 # Installation
 Install with pip. The installation is confirmed on Python 3.10.11
 ```python
-pip install 
+pip install git+https://github.com/CShulby/miipher
 ```
 
 # Pretrained model
