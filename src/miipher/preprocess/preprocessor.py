@@ -98,27 +98,42 @@ class Preprocessor:
         return input_ids, input_phonemes
 
     def build_from_path(self):
-        pathlib.Path(
-            "/".join(self.cfg.preprocess.train_tar_sink.pattern.split("/")[:-1])
-        ).mkdir(exist_ok=True)
+        # Check the directory for storing processed files
+        train_val_directory = "/".join(self.cfg.preprocess.train_tar_sink.pattern.split("/")[:-1])
+        pathlib.Path(train_val_directory).mkdir(exist_ok=True)
+        print(f"Output directory set to: {train_val_directory}")
+
+        # Instantiate sinks for training and validation
         train_sink = hydra.utils.instantiate(self.cfg.preprocess.train_tar_sink)
         val_sink = hydra.utils.instantiate(self.cfg.preprocess.val_tar_sink)
-        dataloader = DataLoader(
-            self.dataset, batch_size=1, shuffle=True, num_workers=64
-        )
+        print("Initialized train and validation sinks.")
+
+        # Instantiate and check DataLoader
+        dataloader = DataLoader(self.dataset, batch_size=1, shuffle=True, num_workers=64)
+        print(f"DataLoader initialized with {len(dataloader.dataset)} items.")
+
         for idx, data in enumerate(tqdm.tqdm(dataloader)):
             basename = data["basename"][0]
             wav_path = data["wav_path"][0]
             word_segmented_text = data["word_segmented_text"][0]
             lang_code = data["lang_code"][0]
-            result = self.process_utterance(
-                basename, wav_path, word_segmented_text, lang_code
-            )
-            if idx >= self.cfg.preprocess.val_size:
-                sink = train_sink
-            else:
-                sink = val_sink
+
+            # Print information about the current item
+            print(f"Processing {idx+1}/{len(dataloader)}: {basename}, {wav_path}, {word_segmented_text}, {lang_code}")
+
+            # Process utterance
+            result = self.process_utterance(basename, wav_path, word_segmented_text, lang_code)
+            print(f"Generated {len(result)} samples for {basename}.")
+
+            # Determine whether to use training or validation sink
+            sink = train_sink if idx >= self.cfg.preprocess.val_size else val_sink
+            
+            # Write samples to the appropriate sink
             for sample in result:
                 sink.write(sample)
+            print(f"Written samples for {basename} to {'train' if sink == train_sink else 'val'} sink.")
+
+        # Close sinks
         train_sink.close()
         val_sink.close()
+        print("Completed processing. Sinks closed.")

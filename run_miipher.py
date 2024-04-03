@@ -1,5 +1,4 @@
 import os
-import gradio as gr
 from miipher.dataset.preprocess_for_infer import PreprocessForInfer
 from miipher.lightning_module import MiipherLightningModule
 from lightning_vocoders.models.hifigan.xvector_lightning_module import HiFiGANXvectorLightningModule
@@ -85,7 +84,7 @@ def process_file(wav_path, transcript, lang_code, output_dir):
 
 if __name__ == "__main__":
     # Directory containing wav files and their corresponding transcriptions
-    wav_dir = '/home/christopher/Repos/miipher/miipher/wav_small_test/'
+    wav_dir = 'test_wav/'
     output_dir = wav_dir
     lang_code = 'eng-us'  # Or 'jpn', depending on your data
     
