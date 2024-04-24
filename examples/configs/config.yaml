@@ -2,12 +2,13 @@ preprocess:
   preprocess_dataset:
     _target_: torch.utils.data.ConcatDataset
     datasets:
-      - 
-        _target_: miipher.dataset.jvs_corpus.JVSCorpus
-        root: /mnt/hdd/datasets/jvs_ver1/
+      # - 
+      #   _target_: miipher.dataset.jvs_corpus.JVSCorpus
+      #   root: /mnt/hdd/datasets/jvs_ver1/
       - 
         _target_: miipher.dataset.libritts.LibriTTSCorpus
-        root: /mnt/hdd/datasets/libritts-r/LibriTTS_R/
+         root: /mnt/hdd/datasets/libritts-r/LibriTTS_R/  
+        #root: /home/christopher/Corpora/LibriTTS-R/
   phoneme_tokenizer:
     _target_: transformers.AutoTokenizer.from_pretrained
     pretrained_model_name_or_path: "vinai/xphonebert-base"
@@ -62,31 +63,46 @@ preprocess:
         max: 30.0
         min: 5.0
       patterns:
-        -
-          - /mnt/hdd/datasets/slakh2100_flac_redux
-          - '**/mix.flac'
+        # -
+        #   - /mnt/hdd/datasets/slakh2100_flac_redux
+        #   - '**/mix.flac'
         - 
-          - /mnt/hdd/datasets/TAU_urban/audio/
+          # - /mnt/hdd/datasets/TAU_urban/audio/
+          - /data/hy17/noise/
           - '**/*.wav'
+        # - 
+        #   # - /mnt/hdd/datasets/TAU_urban/audio/
+        #   - /data/hy17/noise/DNS
+        #   - '**/*.wav'
   train_tar_sink:
     _target_: webdataset.ShardWriter
     pattern: "/mnt/hdd/miipher/miipher-train-%06d.tar.gz"
+    #pattern: "/data/hy17/miipher/miipher-train-%06d.tar.gz"
   val_tar_sink:
     _target_: webdataset.ShardWriter
     pattern: "/mnt/hdd/miipher/miipher-val-%06d.tar.gz"
+    #pattern: "/data/hy17/miipher/miipher-val-%06d.tar.gz"
   val_size: 6000
   n_repeats: 4
 sample_rate: 22050
 
 data:
-  train_dataset_path: /mnt/hdd/miipher/miipher-train-{000000..000663}.tar.gz
-  val_dataset_path: /mnt/hdd/miipher/miipher-val-{000000..000007}.tar.gz
-  train_batch_size: 8
-  val_batch_size: 8
-  speech_ssl_processor:
+  train_dataset_path: /home/christopher/Corpora/LibriTTS-R/train_clean_100.tar.gz
+  val_dataset_path: /home/christopher/Corpora/LibriTTS-R/test_clean.tar.gz
+
+  # train_dataset_path: 
+  # val_dataset_path: 
+  train_batch_size: 80  # **** TODO(HAICI) ***
+  val_batch_size: 32
+  speech_ssl_processor: # **** TODO(HAICI) ***
+    # --- wavlm --- 
+    # processor: 
+    #   _target_: transformers.AutoFeatureExtractor.from_pretrained
+    #   pretrained_model_name_or_path: "microsoft/wavlm-large"
+    # # --- w2v-bert ---
     processor:
       _target_: transformers.AutoFeatureExtractor.from_pretrained
-      pretrained_model_name_or_path: "microsoft/wavlm-large"
+      pretrained_model_name_or_path: "facebook/w2v-bert-2.0"
     sr: 16_000
   phoneme_padding_idx: 1
   phoneme_tokenizer:
@@ -94,21 +110,35 @@ data:
     pretrained_model_name_or_path: "vinai/xphonebert-base"
 train:
   loggers:
-    - _target_: lightning.pytorch.loggers.WandbLogger
-      project: "miipher"
+    # - _target_: lightning.pytorch.loggers.WandbLogger
+    #   project: "miipher"
+    - _target_: lightning.pytorch.loggers.TensorBoardLogger
+      # save_dir: "../tb_runs/wavlm-df"
+      save_dir: "../tb_runs/w2v-bert"
+      # project: "miipher-w2v-bert" # **** TODO(HAICI) ***
   trainer:
     _target_: lightning.Trainer
     accelerator: "gpu"
-    devices: -1
+    devices: -1 # **** TODO(HAICI) ***
     check_val_every_n_epoch: 1
     max_epochs: 3300
 model:
-  ssl_models:
+  ssl_models: # **** TODO(HAICI) ***
+    # --- WavLM ---
+    # model:
+    #   _target_: transformers.AutoModel.from_pretrained
+    #   pretrained_model_name_or_path: "microsoft/wavlm-large"
+    # # --- Whisper ---
+    # model:
+    #   _target_: transformers.AutoModel.from_pretrained
+    #   pretrained_model_name_or_path: "openai/whisper-large-v2"
+    # # --- W2v-bert ---
     model:
-      _target_: transformers.AutoModel.from_pretrained
-      pretrained_model_name_or_path: "microsoft/wavlm-large"
+      _target_: transformers.Wav2Vec2BertModel.from_pretrained
+      pretrained_model_name_or_path: "facebook/w2v-bert-2.0"
     sr: 16_000
-    layer: 8
+    layer: 8  
+
   phoneme_model:
     _target_: transformers.AutoModel.from_pretrained
     pretrained_model_name_or_path: "vinai/xphonebert-base"
@@ -125,3 +155,4 @@ model:
 optimizers:
   _target_: torch.optim.AdamW
   lr: 2e-5
+
