@@ -5,16 +5,20 @@ import webdataset as wds
 import torch
 import torchaudio
 import hydra
+from transformers import AutoFeatureExtractor
 
 
 class MiipherDataModule(LightningDataModule):
     def __init__(self, cfg) -> None:
         super().__init__()
+
         self.speech_ssl_processor = hydra.utils.instantiate(
             cfg.data.speech_ssl_processor.processor
         )
+
+        #self.speech_ssl_processor = processor = AutoFeatureExtractor.from_pretrained("facebook/w2v-bert-2.0")
         self.speech_ssl_sr = cfg.data.speech_ssl_processor.sr
-        self.phoneme_tokenizer = hydra.utils.instantiate(cfg.data.phoneme_tokenizer)
+        #self.phoneme_tokenizer = hydra.utils.instantiate(cfg.data.phoneme_tokenizer)
         self.cfg = cfg
 
     def setup(self, stage: str):
@@ -41,28 +45,47 @@ class MiipherDataModule(LightningDataModule):
         )
 
     def train_dataloader(self):
-        return DataLoader(
+        print("Initializing training DataLoader")
+        dataloader = DataLoader(
             self.train_dataset,
             batch_size=self.cfg.data.train_batch_size,
             collate_fn=self.collate_fn,
             num_workers=8,
         )
+        print(f"Training DataLoader created with batch size: {self.cfg.data.train_batch_size}")
+        return dataloader
 
     def val_dataloader(self):
-        return DataLoader(
+        print("Initializing validation DataLoader")
+        dataloader = DataLoader(
             self.val_dataset,
             batch_size=self.cfg.data.val_batch_size,
             collate_fn=self.collate_fn,
             num_workers=8,
         )
+        print(f"Validation DataLoader created with batch size: {self.cfg.data.val_batch_size}")
+        return dataloader
 
+
+    def custom_padding(self, batch_texts):
+        # Find the maximum length of text in the batch
+        max_length = max(len(text) for text in batch_texts)
+        # Initialize a matrix to store the padded texts
+        padded_texts = torch.zeros((len(batch_texts), max_length), dtype=torch.long)
+        # Fill the matrix with the batch texts with padding
+        for i, text in enumerate(batch_texts):
+            padded_texts[i, :len(text)] = torch.tensor(text)
+        return padded_texts
+    
     @torch.no_grad()
     def collate_fn(self, batch):
+        print("Starting collate_fn...")
         output = dict()
         degraded_wav_16ks = []
         clean_wav_16ks = []
 
         for sample in batch:
+            #print("Processing a sample...")
             clean_wav, sr = sample["speech.wav"]
             clean_wav_16ks.append(
                 torchaudio.functional.resample(clean_wav, sr, new_freq=16000).squeeze()[:16000*20]
@@ -89,7 +112,19 @@ class MiipherDataModule(LightningDataModule):
             sampling_rate=16000,
             padding=True,
         )
-        output["phoneme_input_ids"] = self.phoneme_tokenizer(
-            [b["phoneme.txt"] for b in batch], return_tensors="pt", padding=True
-        )
+        #output["phoneme_input_ids"] = self.phoneme_tokenizer(
+        #    [b["phoneme.txt"] for b in batch], return_tensors="pt", padding=True
+        #)
+        #batch_texts = [b["phoneme_input_ids.pth"] for b in batch]
+        #output["phoneme_input_ids"] = self.custom_padding(batch_texts)
+        print("Collecting phoneme input IDs...")
+        try:
+            batch_texts = [b["phoneme_input_ids.pth"] for b in batch]
+            print("Batch texts collected:", batch_texts)
+            output["phoneme_input_ids"] = self.custom_padding(batch_texts)
+            print("Phoneme input IDs padded and added to output.")
+        except KeyError as e:
+            print(f"Key error during batch processing: {e}")
+
+        print("Batch processing completed.")
         return output

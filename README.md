@@ -9,6 +9,12 @@ Install with pip. The installation is confirmed on Python 3.10.11
 pip install git+https://github.com/CShulby/miipher
 ```
 
+you may need some additional ffmpeg tools for preprocessing:
+
+```
+conda install 'ffmpeg<5'
+```
+
 # Pretrained model
 The pretrained model is trained on [LibriTTS-R](http://www.openslr.org/141/) and [JVS corpus](https://sites.google.com/site/shinnosuketakamichi/research-topics/jvs_corpus),
 and provided in **CC-BY-NC-2.0 license**.

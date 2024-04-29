@@ -199,7 +199,7 @@ torchmetrics==1.0.1
 tornado==6.3.2
 tqdm==4.65.0
 traitlets==5.9.0
-transformers==4.29.2
+transformers==4.40.0
 triton==2.0.0
 typing-extensions==4.7.1
 tzdata==2023.3

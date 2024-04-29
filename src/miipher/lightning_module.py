@@ -32,7 +32,7 @@ class FeatureExtractor():
             1
         )
         phone_feature = self.phoneme_model(
-            **inputs["phoneme_input_ids"]
+            input_ids=inputs["phoneme_input_ids"],
         ).last_hidden_state
         if 'clean_ssl_input' in inputs.keys():
             clean_ssl_feature = self.speech_ssl_model(

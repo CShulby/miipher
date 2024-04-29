@@ -14,8 +14,11 @@ def main(cfg: DictConfig):
     lightning_module = MiipherLightningModule(cfg)
     datamodule = MiipherDataModule(cfg)
     loggers = hydra.utils.instantiate(cfg.train.loggers)
+    print("Initializing trainer")
     trainer = hydra.utils.instantiate(cfg.train.trainer, logger=loggers)
+    print("Trainer initialized")
     trainer.fit(lightning_module, datamodule)
+    print("Trainer started")
 
 
 if __name__ == "__main__":

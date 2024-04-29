@@ -12,7 +12,11 @@ from .noiseAugmentation import DegrationApplier
 import io
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from miipher.ml_pl_bert.phonemize_processor import PhonemizeProcessor
+#from miipher.ml_pl_bert.text_utils import TextCleaner
+import hydra
+from omegaconf import DictConfig
+from lightning.pytorch import seed_everything
 
 class Preprocessor:
     """
@@ -27,9 +31,10 @@ class Preprocessor:
         self.cfg = cfg
         self.dataset = hydra.utils.instantiate(cfg.preprocess.preprocess_dataset)
         self.sampling_rate = self.cfg.sample_rate
-        self.phoneme_tokenizer = hydra.utils.instantiate(
-            cfg.preprocess.phoneme_tokenizer
-        )
+        #self.phoneme_tokenizer = hydra.utils.instantiate(
+        #    cfg.preprocess.phoneme_tokenizer
+        #)
+        #self.text_cleaner = TextCleaner() 
         self.degration_model = DegrationApplier(cfg.preprocess.degration)
         self.text2phone_dict = dict()
         self.n_repeats = cfg.preprocess.n_repeats
@@ -53,9 +58,12 @@ class Preprocessor:
         with open(audio_file_path, mode="rb") as f:
             wav_bytes = f.read()
 
-        input_ids, input_phonems = self.get_phonemes_input_ids(
+        input_ids, input_phonemes = self.get_phonemes_input_ids(
             word_segmented_text, lang_code
         )
+        if len(input_ids) > 512:
+            print(f"Error with file {audio_file_path}. Ignoring file...")
+            return False
 
         samples = []
         for i in range(self.n_repeats):
@@ -68,7 +76,7 @@ class Preprocessor:
                 format="wav",
             )
             buff.seek(0)
-
+   
             sample = {
                 "__key__": basename + f"_{i}",
                 "speech.wav": wav_bytes,
@@ -76,7 +84,7 @@ class Preprocessor:
                 "resampled_speech.pth": webdataset.torch_dumps(waveform),
                 "word_segmented_text.txt": word_segmented_text,
                 "phoneme_input_ids.pth": webdataset.torch_dumps(input_ids),
-                "phoneme.txt": input_phonems,
+                "phoneme.txt": input_phonemes,
             }
             samples.append(sample)
         return samples
@@ -88,13 +96,19 @@ class Preprocessor:
     @torch.inference_mode()
     def get_phonemes_input_ids(self, word_segmented_text, lang_code):
         if lang_code not in self.text2phone_dict.keys():
-            self.text2phone_dict[lang_code] = hydra.utils.instantiate(
-                self.cfg.preprocess.text2phone_model, language=lang_code
-            )
-        input_phonemes = self.text2phone_dict[lang_code].infer_sentence(
-            word_segmented_text
-        )
-        input_ids = self.phoneme_tokenizer(input_phonemes, return_tensors="pt")
+            #self.text2phone_dict[lang_code] = hydra.utils.instantiate(
+            #    self.cfg.preprocess.text2phone_model, language=lang_code
+            #)
+            self.text2phone_dict[lang_code] = PhonemizeProcessor(language=lang_code)
+        
+        #input_phonemes = self.text2phone_dict[lang_code].infer_sentence(
+        #    word_segmented_text
+        #)
+        #input_ids = self.phoneme_tokenizer(input_phonemes, return_tensors="pt")
+        input_ids, input_phonemes = self.text2phone_dict[lang_code](word_segmented_text)
+        #input_phonemes = ''.join(phonemes)
+        #input_ids = self.text_cleaner(input_phonemes)
+
         return input_ids, input_phonemes
 
     def build_from_path(self):
@@ -123,6 +137,8 @@ class Preprocessor:
 
             # Process utterance
             result = self.process_utterance(basename, wav_path, word_segmented_text, lang_code)
+            if not result:
+                continue
             print(f"Generated {len(result)} samples for {basename}.")
 
             # Determine whether to use training or validation sink
@@ -137,3 +153,16 @@ class Preprocessor:
         train_sink.close()
         val_sink.close()
         print("Completed processing. Sinks closed.")
+
+
+
+@hydra.main(version_base="1.3", config_name="config", config_path="/home/fred/Projetos/tmp/miipher/examples/configs/")
+def main(cfg: DictConfig):
+    seed_everything(1234)
+    preprocssor = Preprocessor(cfg=cfg)
+    preprocssor.build_from_path()
+
+
+if __name__ == "__main__":
+    main()
+
