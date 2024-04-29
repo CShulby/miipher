@@ -120,9 +120,9 @@ class MiipherDataModule(LightningDataModule):
         print("Collecting phoneme input IDs...")
         try:
             batch_texts = [b["phoneme_input_ids.pth"] for b in batch]
-            print("Batch texts collected:", batch_texts)
+            #print("Batch texts collected:", batch_texts)
             output["phoneme_input_ids"] = self.custom_padding(batch_texts)
-            print("Phoneme input IDs padded and added to output.")
+            #print("Phoneme input IDs padded and added to output.")
         except KeyError as e:
             print(f"Key error during batch processing: {e}")
 

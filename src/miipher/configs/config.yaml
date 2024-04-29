@@ -114,11 +114,11 @@ train:
   trainer:
     _target_: lightning.Trainer
     accelerator: "gpu"
-    devices: -1 # **** TODO(HAICI) ***
+    devices: -1 
     check_val_every_n_epoch: 1
     max_epochs: 3300
 model:
-  ssl_models: # **** TODO(HAICI) ***
+  ssl_models:
 
     model:
       _target_: transformers.Wav2Vec2BertModel.from_pretrained
