@@ -1,5 +1,5 @@
 # miipher
-This repository proviedes unofficial implementation of speech restoration model Miipher.
+This repository provides an unofficial implementation of speech restoration model Miipher.
 Miipher is originally proposed by Koizumi et. al. [arxiv](https://arxiv.org/abs/2303.01664)
 Please note that the model provided in this repository doesn't represent the performance of the original model proposed by Koizumi et. al. as this implementation differs in many ways from the paper.
 
@@ -18,6 +18,20 @@ and provided in **CC-BY-NC-2.0 license**.
 ```
 python run_miipher.py
 ```
+
+You can also run in parallel on CPU by running the following script and passing a list of the wav files (note they should have corresponding transcriptions in the same folder):
+
+```
+python run_miipher_parallel.py --wav_list wav_list
+```
+
+If you are still hungry for more you can run the same way using full GPU inference:
+
+```
+python run_miipher_gpu.py --wav_list wav_list
+```
+
+Tests on an RTX 4090 showed a difference of 3.5x real time with the parallel CPU script vs. 30x real time on GPU
 
 # Differences from the original paper
 | | [original paper](https://arxiv.org/abs/2303.01664) | This repo |
