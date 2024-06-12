@@ -1,46 +1,60 @@
-#!/usr/bin/env python3
-
-import os
-import sys
+import concurrent.futures
 import logging
-from miipher.dataset.preprocess_for_infer import PreprocessForInfer
-from miipher.lightning_module import MiipherLightningModule
-from lightning_vocoders.models.hifigan.xvector_lightning_module import (
+import os
+import shutil
+import tempfile
+from typing import Any
+
+import hydra
+import torchaudio  # type: ignore[import-untyped]
+from lightning_vocoders.models.hifigan.xvector_lightning_module import (  # type: ignore[import-untyped, note]
     HiFiGANXvectorLightningModule,
 )
-import torch
-import torchaudio
-import hydra
-import tempfile
-import shutil
-import concurrent.futures
+
+from miipher.dataset.preprocess_for_infer import PreprocessForInfer  # type: ignore[import-untyped]
+from miipher.lightning_module import MiipherLightningModule  # type: ignore[import-untyped]
 import time
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s:%(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s:%(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
-def initialize_models():
+def initialize_models() -> (
+    tuple[
+        MiipherLightningModule,
+        HiFiGANXvectorLightningModule,
+        Any,
+        PreprocessForInfer,
+    ]
+):
     """
     Initialize and load the necessary models for processing.
 
     Returns:
-        tuple: Contains instances of the Miipher model, vocoder model, xvector model, and preprocessor.
+        tuple: Contains instances of the Miipher model,
+               vocoder model, xvector model, and preprocessor.
     """
     miipher_path = "miipher_v2.ckpt"
     vocoder_path = "vocoder_finetuned_v2.ckpt"
     logger.info("Loading models...")
     miipher = MiipherLightningModule.load_from_checkpoint(
-        miipher_path, map_location="cpu"
+        miipher_path,
+        map_location="cuda",
     )
     vocoder = HiFiGANXvectorLightningModule.load_from_checkpoint(
-        vocoder_path, map_location="cpu"
+        vocoder_path,
+        map_location="cuda",
     )
-    xvector_model = hydra.utils.instantiate(vocoder.cfg.data.xvector.model)
-    xvector_model = xvector_model.to("cpu")
-    preprocessor = PreprocessForInfer(miipher.cfg)
-    preprocessor.cfg.preprocess.text2phone_model.is_cuda = False
+    xvector_model = hydra.utils.instantiate(
+        vocoder.cfg.data.xvector.model,
+        run_opts={"device": "cuda"},
+    )
+    preprocessor = PreprocessForInfer(miipher.cfg).to("cuda")
+    preprocessor.cfg.preprocess.text2phone_model.is_cuda = True
     logger.info("Models loaded successfully.")
     return miipher, vocoder, xvector_model, preprocessor
 
@@ -69,6 +83,15 @@ def find_transcript_path(wav_path):
     return None
 
 
+def to_cuda(d: dict) -> dict:
+    for k, v in d.items():
+        if getattr(v, "keys", None):
+            d[k] = to_cuda(v)
+        else:
+            d[k] = v.to("cuda")
+    return d
+
+
 def process_file(
     wav_path,
     transcript_path,
@@ -77,7 +100,7 @@ def process_file(
     miipher,
     vocoder,
     xvector_model,
-    preprocessor,
+    preprocessor: PreprocessForInfer,
 ):
     """
     Process a single wav file, performing speech enhancement and saving the cleaned output.
@@ -106,12 +129,15 @@ def process_file(
         logger.info(f"Processing file: {wav_path}")
         wav, sr = torchaudio.load(wav_path)
         wav = wav[0].unsqueeze(0)
+        wav = wav.to("cuda")
         batch = preprocessor.process(
             "test",
-            (torch.tensor(wav), sr),
+            (wav.clone().detach(), sr),
             word_segmented_text=transcript,
             lang_code=lang_code,
         )
+
+        batch = to_cuda(batch)
 
         (
             phone_feature,
@@ -125,18 +151,21 @@ def process_file(
             degraded_ssl_feature.detach(),
         )
         vocoder_xvector = xvector_model.encode_batch(
-            batch["degraded_wav_16k"].view(1, -1).cpu().detach()
+            batch["degraded_wav_16k"].view(1, -1).detach()
         ).squeeze(1)
         cleaned_wav = vocoder.generator_forward(
             {
-                "input_feature": cleaned_ssl_feature.detach(),
-                "xvector": vocoder_xvector.detach(),
+                "input_feature": cleaned_ssl_feature.to("cuda").detach(),
+                "xvector": vocoder_xvector.to("cuda").detach(),
             }
         )[0].T
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
             torchaudio.save(
-                tmpfile.name, cleaned_wav.view(1, -1), sample_rate=22050, format="wav"
+                tmpfile.name,
+                cleaned_wav.to("cpu").view(1, -1),
+                sample_rate=22050,
+                format="wav",
             )
             output_file_name = os.path.basename(wav_path).replace(
                 ".wav", "_cleaned.wav"
@@ -202,7 +231,6 @@ def process_list(wav_list_path, lang_code, models, log_file_path):
             result = future.result()
             if result:
                 output_files.append(result)
-
     return output_files
 
 
@@ -226,7 +254,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wav_list",
         type=str,
-        required=True,
+        default="wav_list",
         help="Text file containing paths to wav files and their corresponding transcriptions",
     )
     parser.add_argument(
@@ -243,8 +271,4 @@ if __name__ == "__main__":
     log_file_path = "transcript_not_found.log"
 
     # Process the list of files
-    start_time = time.time()
     process_list(args.wav_list, args.lang_code, models, log_file_path)
-    end_time = time.time()
-    duration = end_time - start_time
-    print("duration: ", duration)

@@ -13,6 +13,7 @@ class Miipher(nn.Module):
         n_hidden_dim,
         n_conformer_blocks,
         n_iters,
+        device: torch.device,
     ) -> None:
         super().__init__()
         self.phone_speaker_film = FiLMLayer(n_hidden_dim, n_hidden_dim)
@@ -34,6 +35,7 @@ class Miipher(nn.Module):
         )
         self.n_iters = n_iters
         self.n_conformer_blocks = n_conformer_blocks
+        self.to(device)
 
     def forward(
         self, phone_feature, speaker_feature, ssl_feature, ssl_feature_lengths=None

@@ -13,13 +13,10 @@ import hydra
 
 
 class FeatureExtractor():
-    def __init__(self,cfg) -> None:
-        self.speech_ssl_model = hydra.utils.instantiate(cfg.model.ssl_models.model)
-        self.speech_ssl_model.eval()
-        self.phoneme_model = hydra.utils.instantiate(cfg.model.phoneme_model)
-        self.phoneme_model.eval()
-        self.xvector_model = hydra.utils.instantiate(cfg.model.xvector_model)
-        self.xvector_model.eval()
+    def __init__(self,cfg, device="cpu") -> None:
+        self.speech_ssl_model = hydra.utils.instantiate(cfg.model.ssl_models.model).eval().to(device)
+        self.phoneme_model = hydra.utils.instantiate(cfg.model.phoneme_model).eval().to(device)
+        self.xvector_model = hydra.utils.instantiate(cfg.model.xvector_model).eval().to(device)
         self.cfg = cfg
 
     @torch.inference_mode()
@@ -31,6 +28,11 @@ class FeatureExtractor():
         xvector = self.xvector_model.mods.embedding_model(feats, wav_16k_lens).squeeze(
             1
         )
+
+        inputs["phoneme_input_ids"] = {
+            k: v.long() for k, v in inputs["phoneme_input_ids"].items()
+        }
+
         phone_feature = self.phoneme_model(
             **inputs["phoneme_input_ids"]
         ).last_hidden_state
@@ -58,17 +60,24 @@ class FeatureExtractor():
         self.phoneme_model = self.phoneme_model.to(device)
         self.xvector_model = self.xvector_model.to(device)
 
+
 class MiipherLightningModule(LightningModule):
+    device: torch.device
+
     def __init__(self, cfg: DictConfig) -> None:
         super().__init__()
-
-        self.miipher = Miipher(**cfg.model.miipher)
+        self.miipher = Miipher(device=self.device, **cfg.model.miipher)
         self.mse_loss = nn.MSELoss()
         self.mae_loss = nn.L1Loss()
         self.cfg = cfg
-        self.feature_extractor = FeatureExtractor(cfg)
+        self.feature_extractor = FeatureExtractor(device=self.device, cfg=cfg)
         # GANs
         self.save_hyperparameters()
+
+    @classmethod
+    def load_from_checkpoint(cls, *args, **kwargs):
+        cls.device = kwargs.get("map_location", "cpu")
+        return super().load_from_checkpoint(*args, **kwargs)
 
     def on_fit_start(self):
         self.feature_extractor.to(self.device)
@@ -138,13 +147,16 @@ class MiipherLightningModule(LightningModule):
         return loss
     @torch.inference_mode()
     def synthesis(self,features:torch.Tensor,wav16k,wav16k_lens):
-        vocoder = HiFiGANXvectorLightningModule.load_from_checkpoint("https://huggingface.co/Wataru/ssl-vocoder/resolve/main/wavlm-large-l8-xvector/wavlm-large-l8-xvector.ckpt",map_location='cpu')
+        vocoder = HiFiGANXvectorLightningModule.load_from_checkpoint(
+            "https://huggingface.co/Wataru/ssl-vocoder/resolve/main/wavlm-large-l8-xvector/wavlm-large-l8-xvector.ckpt",
+            map_location=self.device,
+        )
         vocoder.eval()
         xvector_model = hydra.utils.instantiate(vocoder.cfg.data.xvector.model)
         xvector_model.eval()
-        xvector = xvector_model.encode_batch(wav16k.unsqueeze(0).cpu()).squeeze(1)
+        xvector = xvector_model.encode_batch(wav16k.unsqueeze(0).squeeze(1))
         vocoder = vocoder.float()
-        return vocoder.generator_forward({"input_feature": features.unsqueeze(0).cpu().float(), "xvector": xvector.cpu().float()})[0].T
+        return vocoder.generator_forward({"input_feature": features.unsqueeze(0).float(), "xvector": xvector.float()})[0].T
 
     def log_audio(self, audio, name, sampling_rate):
         for logger in self.loggers:
